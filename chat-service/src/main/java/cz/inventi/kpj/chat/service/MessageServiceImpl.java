@@ -9,6 +9,7 @@ import cz.inventi.kpj.openapi.model.Message;
 import cz.inventi.kpj.openapi.model.MessageRequest;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -43,16 +44,49 @@ public class MessageServiceImpl implements MessageService, MessageListener {
     @Override
     public UUID createMessage(MessageRequest messageRequest) {
         // TODO: map messageRequest to messageEvent; set type, id and created; publish messageEvent via messageBroker and return its id
-        return UUID.randomUUID();
+        MessageEvent messageEvent = new MessageEvent();
+        messageEvent.setType(MessageType.MESSAGE);
+        messageEvent.setId(UUID.randomUUID());
+        messageEvent.setCreated(OffsetDateTime.now());
+        messageEvent.setName(messageRequest.getName());
+
+        messageBroker.publish(messageEvent);
+
+        Message message = messageMapper.eventToDTO(messageEvent);
+        messages.add(message);
+
+        return messageEvent.getId();
     }
 
     @Override
     public void onMessage(MessageEvent messageEvent) {
         // TODO: switch over messageEvent type; if it is a message, map it to Message and add it to messages list; if it is a presence check, just log it; if it is an unknown type, log a warning
+        switch (messageEvent.getType()) {
+            case MESSAGE:
+                Message message = messageMapper.eventToDTO(messageEvent);
+                messages.add(message);
+                break;
+            case PRESENCE:
+                log.info("Received a presence check: {}", messageEvent.getName());
+                break;
+            default:
+                log.warn("Received a message of unknown type: {}", messageEvent.getType());
+        }
     }
 
     // TODO: execute every 10 seconds (*/10 * * * * *)
+    @Scheduled(fixedRate = 10000)
     public void sendPresence() {
         // TODO: create a new messageEvent with type PRESENCE, id, created and name; publish it via messageBroker and log an info message
+        MessageEvent presenceEvent = new MessageEvent();
+        presenceEvent.setType(MessageType.PRESENCE);
+        presenceEvent.setId(UUID.randomUUID());
+        presenceEvent.setCreated(OffsetDateTime.now());
+        presenceEvent.setName("subscriberHa");
+
+        messageBroker.publish(presenceEvent);
+
+        log.info("Sent presence check: {}", presenceEvent.getName());
+
     }
 }
